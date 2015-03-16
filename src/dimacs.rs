@@ -1,7 +1,6 @@
 use std::{io, fs, fmt, error};
 use std::path::AsPath;
 use std::io::prelude::*;
-use std::borrow::ToOwned;
 use std::collections::HashSet;
 use std::num::SignedInt;
 use Problem;
@@ -51,7 +50,7 @@ pub fn load_problem<P: AsPath + ?Sized>(path: &P) -> Result<Problem, Error> {
         return Err(Error::Invalid("Number of clauses does not match preamble"))
     }
 
-    let mut problem = Problem { clauses: vec![] };
+    let mut problem = Problem { variables: preamble.1, clauses: vec![] };
 
     for clause in &clauses {
         let mut c = Clause { t: HashSet::new(), f: HashSet::new() };
@@ -94,7 +93,7 @@ use std::borrow::ToOwned;
 
 #[pub]
 root -> ((String, u32, u32), Vec<Vec<i32>>)
-    = preamble:preamble clauses:clauses { (preamble, clauses) }
+    = preamble:preamble wsq clauses:clauses { (preamble, clauses) }
 
 ws = [\n\t ]+ { () }
 wsq = ws? { () }
@@ -103,10 +102,10 @@ preamble -> (String, u32, u32)
     = (comment "\n")* problem:problem "\n" { problem }
 
 comment
-    = "c" ws [^\n]*
+    = "c" [^\n]*
 
 problem -> (String, u32, u32)
-    = "p" ws format:ident ws vars:number ws clauses:number { (format, vars, clauses) }
+    = "p" ws format:ident ws vars:number ws clauses:number [\t ]* { (format, vars, clauses) }
 
 clauses -> Vec<Vec<i32>>
     = d:(clause ** ws) ws { d }
@@ -121,7 +120,7 @@ number -> u32
     = [0-9]+ { match_str.parse().unwrap() }
 
 inumber -> i32
-    = "-"? [1-9] { match_str.parse().unwrap() }
+    = "-"? [1-9]+ { match_str.parse().unwrap() }
 "#);
 
 #[test]
