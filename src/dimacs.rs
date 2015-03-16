@@ -111,7 +111,8 @@ clauses -> Vec<Vec<i32>>
     = d:(clause ** ws) ws { d }
 
 clause -> Vec<i32>
-    = ns:(inumber ** ws) wsq "0" { ns }
+    = ns:(inumber ** ws) ws "0" { ns }
+    / "0" { vec![] }
 
 ident -> String
     = [a-z]+ { match_str.to_owned() }
@@ -120,7 +121,7 @@ number -> u32
     = [0-9]+ { match_str.parse().unwrap() }
 
 inumber -> i32
-    = "-"? [1-9]+ { match_str.parse().unwrap() }
+    = "-"? [1-9] [0-9]* { match_str.parse().unwrap() }
 "#);
 
 #[test]
