@@ -3,7 +3,7 @@
 
 extern crate time;
 
-use std::collections::{HashSet, HashMap};
+use std::collections::{HashSet, HashMap, VecMap};
 use std::fmt;
 use std::num::SignedInt;
 
@@ -11,15 +11,22 @@ mod dimacs;
 mod naive;
 mod dpll;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 /// Disjunctive clause.
 pub struct Clause {
-    pub t: HashSet<u32>,
-    pub f: HashSet<u32>
+    literals: VecMap<bool>
+}
+
+pub enum Unitness {
+    Unit(u32, bool),
+    Nonunit,
+    Determined(bool)
 }
 
 impl Clause {
     fn new(trues: &[u32], falses: &[u32]) -> Clause {
+        unimplemented!();
+        /*
         let mut t = HashSet::new();
         for &var in trues {
             t.insert(var);
@@ -31,44 +38,86 @@ impl Clause {
         }
 
         Clause { t: t, f: f }
+        */
+    }
+
+    fn empty() -> Clause {
+        Clause { literals: VecMap::new() }
+    }
+
+    fn add_literal(&mut self, var: u32, value: bool) {
+        self.literals.insert(var as usize, value);
+    }
+
+    fn literal(&self, var: u32) -> Option<bool> {
+        self.literals.get(&(var as usize)).cloned()
+    }
+
+    fn unit_literal(&self, assignment: &PartialAssignment) -> Unitness {
+        let mut ret = None;
+
+        if let Some(x) = self.evaluate_partial(assignment) {
+            return Unitness::Determined(x)
+        }
+
+        for (var, &value) in &self.literals {
+            let var = var as u32;
+            match (assignment.is_assigned(var), ret) {
+                (false, None) => ret = Some((var, value)),
+                (false, _   ) => return Unitness::Nonunit,
+                _             => ()
+            }
+        }
+
+        match ret {
+            Some((var, value)) => return Unitness::Unit(var, value),
+            _ => unreachable!()
+        }
     }
 
     fn evaluate(&self, assignment: &Assignment) -> bool {
-        for &var in &self.t {
-            if assignment.is_set(var) { return true }
-        }
-        for &var in &self.f {
-            if !assignment.is_set(var) { return true }
+        for (var, &value) in &self.literals {
+            if assignment.is_set(var as u32) == value {
+                return true
+            }
         }
 
         false
     }
 
+    fn evaluate_partial(&self, assignment: &PartialAssignment) -> Option<bool> {
+        let mut indeterminate = false;
+
+        for (var, &value) in &self.literals {
+            match assignment.assignment(var as u32) {
+                Some(a) if a == value => { return Some(true) },
+                None => { indeterminate = true }
+                _ => ()
+            }
+        }
+
+        if indeterminate {
+            None
+        } else {
+            Some(false)
+        }
+    }
+
     fn unit_evaluate(&self, var: u32, is_true: bool) -> bool {
-        (is_true  && self.t.contains(&var)) ||
-        (!is_true && self.f.contains(&var))
+        self.literals.get(&(var as usize)).cloned() == Some(is_true)
     }
 }
 
 impl fmt::Display for Clause {
     fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        let mut cs = vec![];
-        for &var in &self.t {
-            cs.push(var as i32);
-        }
-        for &var in &self.f {
-            cs.push(-(var as i32));
-        }
-        cs.sort_by(|a,b| a.abs().cmp(&b.abs()));
-
-        for (i, &v) in cs.iter().enumerate() {
+        for (i, (var, &value)) in self.literals.iter().enumerate() {
             if i > 0 {
                 try!(write!(f, " ∨ "));
             }
-            if v < 0 {
+            if !value {
                 try!(write!(f, "¬"));
             }
-            try!(write!(f, "{}", v.abs()));
+            try!(write!(f, "{}", var));
         }
 
         Ok(())
@@ -76,9 +125,30 @@ impl fmt::Display for Clause {
 }
 
 #[derive(Debug, Clone)]
+pub struct VariableSet(u32);
+impl VariableSet {
+    pub fn new(num: u32) -> VariableSet {
+        VariableSet(num)
+    }
+
+    pub fn count(&self) -> u32 {
+        self.0
+    }
+}
+
+impl<'a> std::iter::IntoIterator for &'a VariableSet {
+    type Item = u32;
+    type IntoIter = std::iter::RangeInclusive<u32>;
+
+    fn into_iter(self) -> std::iter::RangeInclusive<u32> {
+        std::iter::range_inclusive(1, self.0)
+    }
+}
+
+#[derive(Debug, Clone)]
 /// Conjunction of disjunctive clauses.
 pub struct Problem {
-    pub variables: u32,
+    pub variables: VariableSet,
     pub clauses: Vec<Clause>
 }
 
@@ -90,7 +160,7 @@ impl Problem {
 
 impl fmt::Display for Problem {
     fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        try!(write!(f, "vars 1..{}: ", self.variables));
+        try!(write!(f, "vars 1..{}: ", self.variables.count()));
         for (i, clause) in self.clauses.iter().enumerate() {
             if i > 0 {
                 try!(write!(f, " ∧ "));
@@ -252,9 +322,8 @@ fn main() {
                 match result {
                     SolverResult::Unsatisfiable => println!("s cnf 0"),
                     SolverResult::Satisfiable(assn) => {
-                        print!("s cnf 1 {} {}\nv", problem.variables, problem.clauses.len());
-                        for var in 0..problem.variables {
-                            let var = var+1;
+                        print!("s cnf 1 {} {}\nv", problem.variables.count(), problem.clauses.len());
+                        for var in &problem.variables {
                             if assn.is_set(var) {
                                 print!(" {}", var);
                             } else {

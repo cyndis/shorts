@@ -1,41 +1,91 @@
-use {Solver, Problem, SolverResult, PartialAssignment, Assignment, Clause};
+use {Solver, Problem, SolverResult, PartialAssignment, Assignment, Clause, Unitness};
 use std::collections::{HashMap, HashSet};
 use std::collections::hash_map::Entry;
+use std::iter::IntoIterator;
 
 pub struct DpllSolver;
 
-/// Find clauses with only one literal, add the literals to the assignment and delete the clauses.
-/// This requires that literal selection during branching removes assigned literals from clauses.
-fn propagate_unit_clauses(problem: &mut Problem, assn: &mut PartialAssignment)
-    -> Option<SolverResult>
-{
-    let units = problem.clauses.iter().filter_map(|clause| {
-        if clause.t.len() + clause.f.len() != 1 { return None }
-
-        if let Some(&var) = clause.t.iter().next() {
-            Some((var, true))
-        } else if let Some(&var) = clause.f.iter().next() {
-            Some((var, false))
-        } else {
-            unreachable!()
-        }
-    }).collect::<Vec<_>>();
-
-    for &(var, is_true) in &units {
-        match assn.assignment(var) {
-            Some(a) if a != is_true => { return Some(SolverResult::Unsatisfiable) },
-            None => { assn.assign(var, is_true) },
-            _ => ()
-        }
-
-        if let Some(result) = fixup_assignment(problem, var, is_true) {
-            return Some(result);
-        }
-    }
-
-    None
+#[derive(Debug, Clone)]
+struct State<'problem> {
+    clauses: Vec<&'problem Clause>,
+    assignment: PartialAssignment
 }
 
+impl<'problem> State<'problem> {
+    fn purity(&self, var: u32) -> Option<bool> {
+        let mut vs = self.clauses.iter().filter_map(|c| c.literal(var));
+        let mut so_far = None;
+        for value in vs {
+            match (so_far, value) {
+                (None, x) => so_far = Some(x),
+                (Some(a), b) if a != b => return None,
+                _ => ()
+            }
+        }
+        so_far
+    }
+}
+
+/// Find clauses with only one literal, add the literals to the assignment and delete the clauses
+/// from the active clauses list.
+fn propagate_unit_clauses(problem: &Problem, state: &mut State)
+    -> Option<SolverResult>
+{
+    let mut unsat = false;
+
+    let (clauses, assignment) = (&mut state.clauses, &mut state.assignment);
+
+    loop {
+        let mut changed = false;
+
+        clauses.retain(|clause| {
+            print!("{:?} {:?} ", assignment, clause);
+            match clause.unit_literal(&assignment) {
+                Unitness::Nonunit => { println!("nonunit"); true },
+                Unitness::Unit(var, value) => {
+                    println!("up: {} <- {}", var, value);
+                    println!("c {:?} a {:?}", clause, assignment);
+                    assignment.assign(var, value);
+                    changed = true;
+                    true
+                },/*
+                    match assignment.assignment(var) {
+                        Some(assn) if assn != value => {
+                            println!(" conflict on var {}", var);
+                            result = Some(SolverResult::Unsatisfiable);
+                        },
+                        None => {
+                            println!(" propagating var {} = {}", var, value);
+                            assignment.assign(var, value);
+                        },
+                        _ => ()
+                    }
+
+                    false
+                },*/
+                Unitness::Determined(truth) => {
+                    println!("determined {}", truth);
+                    if !truth {
+                        unsat = true;
+                    }
+
+                    false
+                }
+            }
+        });
+
+        if unsat || !changed { break }
+    }
+
+    println!("{} clauses left after propagation", clauses.len());
+
+    if unsat {
+        return Some(SolverResult::Unsatisfiable)
+    } else {
+        return None
+    }
+}
+/*
 fn fixup_assignment(problem: &mut Problem, var: u32, value: bool) -> Option<SolverResult> {
     problem.clauses.retain(|clause| !clause.unit_evaluate(var, value));
     for clause in &mut problem.clauses {
@@ -66,7 +116,8 @@ fn test_propagate_unit_clauses() {
     assert!(p.clauses.is_empty());
     assert!(a.assignment(1) == Some(true));
 }
-
+*/
+/*
 fn get_purity(var: u32, problem: &Problem) -> Option<bool> {
     let mut seen = None;
 
@@ -100,111 +151,94 @@ fn test_get_purity() {
     assert_eq!(get_purity(2, &p), None);
     assert_eq!(get_purity(3, &p), Some(false));
 }
+*/
+fn eliminate_pure(problem: &Problem, state: &mut State) -> Option<SolverResult> {
+    for var in &problem.variables {
+        match (state.purity(var), state.assignment.assignment(var)) {
+            (Some(value), Some(assn)) if value == assn => {
+                // Variable is purely of assigned polarity, can remove all clauses
+                // that contain it.
 
-fn eliminate_pure(problem: &mut Problem, assn: &mut PartialAssignment) -> Option<SolverResult> {
-    for i in 0..problem.variables {
-        let var = i+1;
-
-        match get_purity(var, &problem) {
-            Some(polarity) => {
-                match assn.assignment(var) {
-                    None => { assn.assign(var, polarity) }
-                    _ => ()
-                }
-
-                if let Some(result) = fixup_assignment(problem, var, polarity) {
-                    return Some(result);
-                }
+                state.clauses.retain(|clause| clause.literal(var).is_none());
             },
-            None => ()
+            (Some(value), Some(assn)) if value != assn => {
+                // Variable is purely of opposite polarity, can never be satisfied
+            },
+            (Some(value), None) => {
+                // Variable is pure but no assignment has been made yet
+
+                state.assignment.assign(var, value);
+
+                state.clauses.retain(|clause| clause.literal(var).is_none());
+            },
+            (None, _) => {
+                // Variable is impure. Nothing to be done.
+            },
+            _ => unreachable!()
         }
     }
 
     None
 }
 
-fn solve(mut p: Problem, mut assn: PartialAssignment) -> SolverResult {
-    //println!("{}\n", p);
+fn solve<'problem>(problem: &'problem Problem, mut state: State<'problem>) -> SolverResult {
+    if state.clauses.is_empty() {
+        return SolverResult::Satisfiable(state.assignment.complete());
+    }
 
-    if let Some(result) = propagate_unit_clauses(&mut p, &mut assn) {
+    if let Some(result) = propagate_unit_clauses(problem, &mut state) {
         return result;
     }
 
-    if let Some(result) = eliminate_pure(&mut p, &mut assn) {
-        return result;
+    //if let Some(result) = eliminate_pure(problem, &mut state) {
+    //    return result;
+    //}
+
+    if state.clauses.is_empty() {
+        return SolverResult::Satisfiable(state.assignment.complete());
     }
 
-    if p.clauses.is_empty() {
-        return SolverResult::Satisfiable(assn.complete());
-    }
+    let next_var = problem.variables.into_iter().find(|&var| !state.assignment.is_assigned(var));
+    if let Some(next_var) = next_var {
+        let mut left_state = state.clone();
+        let mut right_state = state.clone();
 
-    let next_var = (0..p.variables).map(|x| x+1).find(|&var| !assn.is_assigned(var));
-    match next_var {
-        Some(var) => {
-            let mut left = assn.clone();
-            let mut right = assn.clone();
+        //let mut a = String::new();
+        //::std::io::stdin().read_line(&mut a);
 
-            let mut leftp = p.clone();
-            let mut rightp = p;
+        left_state.assignment.assign(next_var, false);
+        right_state.assignment.assign(next_var, true);
 
-            let mut run_l = true;
-            let mut run_r = true;
+        let left_result = solve(problem, left_state);
+        if let SolverResult::Satisfiable(_) = left_result {
+            return left_result;
+        }
 
-            for clause in &mut leftp.clauses {
-                clause.t.remove(&var);
+        let right_result = solve(problem, right_state);
+        if let SolverResult::Satisfiable(_) = right_result {
+            return right_result;
+        }
 
-                if clause.t.len() + clause.f.len() == 0 {
-                    run_l = false;
-                    break;
-                }
-            }
-
-            for clause in &mut rightp.clauses {
-                clause.f.remove(&var);
-
-                if clause.t.len() + clause.f.len() == 0 {
-                    run_r = false;
-                    break;
-                }
-            }
-
-            left.assign(var, false);
-
-            if let Some(SolverResult::Unsatisfiable) = fixup_assignment(&mut leftp, var, false) {
-                run_l = false;
-            }
-
-            right.assign(var, true);
-
-            if let Some(SolverResult::Unsatisfiable) = fixup_assignment(&mut rightp, var, true) {
-                run_l = false;
-            }
-
-            let left_r = if run_l {
-                solve(leftp, left)
-            } else {
-                SolverResult::Unsatisfiable
-            };
-
-            let right_r = if run_r {
-                solve(rightp, right)
-            } else {
-                SolverResult::Unsatisfiable
-            };
-
-            match (left_r, right_r) {
-                (SolverResult::Satisfiable(s), _) |
-                (_, SolverResult::Satisfiable(s)) => return SolverResult::Satisfiable(s),
-                _                                 => return SolverResult::Unsatisfiable
-            }
-        },
-        None => return SolverResult::Unsatisfiable
+        return SolverResult::Unsatisfiable;
+    } else {
+        println!("UNREACHABLE");
+        println!("assn = {:?}", state.assignment);
+        println!("clauses = {:?}", state.clauses);
+        unreachable!();
     }
 }
 
 impl Solver for DpllSolver {
     fn solve(&self, problem: &Problem) -> SolverResult {
-        solve(problem.clone(), PartialAssignment::new(problem.variables))
+        let all_clauses = problem.clauses.iter().collect::<Vec<_>>();
+
+        println!("Clauses:\n{:?}", all_clauses);
+        let root_state = State {
+            clauses: all_clauses,
+            assignment: PartialAssignment::new(problem.variables.count())
+        };
+
+        solve(problem, root_state)
     }
     fn name(&self) -> &str {
         "dpll"

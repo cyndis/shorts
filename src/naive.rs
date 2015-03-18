@@ -24,7 +24,7 @@ impl Solver for NaiveSolver {
     fn solve(&self, problem: &Problem) -> SolverResult {
         let mut result = SolverResult::Unsatisfiable;
 
-        each_combination(problem.variables, |assignment| {
+        each_combination(problem.variables.count(), |assignment| {
             if problem.evaluate(&assignment) {
                 result = SolverResult::Satisfiable(assignment);
                 false

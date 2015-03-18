@@ -3,8 +3,10 @@ use std::path::AsPath;
 use std::io::prelude::*;
 use std::collections::HashSet;
 use std::num::SignedInt;
+use std::iter::range_inclusive;
 use Problem;
 use Clause;
+use VariableSet;
 
 #[derive(Debug)]
 pub enum Error {
@@ -50,10 +52,10 @@ pub fn load_problem<P: AsPath + ?Sized>(path: &P) -> Result<Problem, Error> {
         return Err(Error::Invalid("Number of clauses does not match preamble"))
     }
 
-    let mut problem = Problem { variables: preamble.1, clauses: vec![] };
+    let mut problem = Problem { variables: VariableSet::new(preamble.1), clauses: vec![] };
 
     for clause in &clauses {
-        let mut c = Clause { t: HashSet::new(), f: HashSet::new() };
+        let mut c = Clause::empty();
 
         for &var in clause {
             let abs = var.abs() as u32;
@@ -62,23 +64,17 @@ pub fn load_problem<P: AsPath + ?Sized>(path: &P) -> Result<Problem, Error> {
             }
 
             if var > 0 {
-                if c.t.contains(&abs) {
-                    return Err(Error::Invalid("Duplicate positive constraint"))
+                match c.literal(abs) {
+                    Some(true)  => return Err(Error::Invalid("Duplicate positive constraint")),
+                    Some(false) => return Err(Error::Invalid("Contradictory constraints in clause")),
+                    None        => c.add_literal(abs, true)
                 }
-                if c.f.contains(&abs) {
-                    return Err(Error::Invalid("Contradictory constraints in clause"))
-                }
-
-                c.t.insert(abs);
             } else {
-                if c.f.contains(&abs) {
-                    return Err(Error::Invalid("Duplicate negative constraint"))
+                match c.literal(abs) {
+                    Some(true)  => return Err(Error::Invalid("Contradictory constraints in clause")),
+                    Some(false) => return Err(Error::Invalid("Duplicate negative constraint")),
+                    None        => c.add_literal(abs, false)
                 }
-                if c.t.contains(&abs) {
-                    return Err(Error::Invalid("Contradictory constraints in clause"))
-                }
-
-                c.f.insert(abs);
             }
         }
 
