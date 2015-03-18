@@ -108,7 +108,7 @@ problem -> (String, u32, u32)
     = "p" ws format:ident ws vars:number ws clauses:number [\t ]* { (format, vars, clauses) }
 
 clauses -> Vec<Vec<i32>>
-    = d:(clause ** ws) ws { d }
+    = d:(clause ** ws) wsq { d }
 
 clause -> Vec<i32>
     = ns:(inumber ** ws) ws "0" { ns }
@@ -126,6 +126,8 @@ inumber -> i32
 
 #[test]
 fn test_parser() {
+    use std::borrow::ToOwned;
+
     assert_eq!(dimacs_peg::root("c foo\np cnf 0 0\n"), Ok((("cnf".to_owned(), 0, 0), vec!())));
     assert_eq!(dimacs_peg::root("p cnf 1 1\n1 0"), Ok((("cnf".to_owned(), 1, 1), vec!(vec!(1)))));
     assert_eq!(dimacs_peg::root("p cnf 2 2\n1 -2 0\n-1 0"), Ok((("cnf".to_owned(), 2, 2), vec!(vec!(1, -2), vec!(-1)))));
