@@ -37,6 +37,6 @@ impl Solver for NaiveSolver {
     }
 
     fn name(&self) -> &str {
-        "exhaustive depth-first search"
+        "bruteforce"
     }
 }

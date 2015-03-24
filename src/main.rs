@@ -10,6 +10,8 @@ use std::num::SignedInt;
 mod dimacs;
 mod naive;
 mod dpll;
+mod backtrack;
+mod backtrack_removal;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 /// Disjunctive clause.
@@ -47,6 +49,10 @@ impl Clause {
 
     fn add_literal(&mut self, var: u32, value: bool) {
         self.literals.insert(var as usize, value);
+    }
+
+    fn remove_literal(&mut self, var: u32) {
+        self.literals.remove(&(var as usize)).unwrap();
     }
 
     fn literal(&self, var: u32) -> Option<bool> {
@@ -173,27 +179,27 @@ impl fmt::Display for Problem {
 }
 
 #[derive(Debug, Clone)]
-pub struct PartialAssignment(u32, HashMap<u32, bool>);
+pub struct PartialAssignment(u32, VecMap<bool>);
 impl PartialAssignment {
     pub fn new(vars: u32) -> PartialAssignment {
-        PartialAssignment(vars, HashMap::new())
+        PartialAssignment(vars, VecMap::new())
     }
 
     pub fn assign(&mut self, var: u32, value: bool) {
         assert!(var > 0 && var <= self.0);
         assert!(!self.is_assigned(var));
 
-        self.1.insert(var, value);
+        self.1.insert(var as usize, value);
     }
 
     pub fn is_assigned(&self, var: u32) -> bool {
         assert!(var > 0 && var <= self.0);
 
-        self.1.contains_key(&var)
+        self.1.contains_key(&(var as usize))
     }
 
     pub fn assignment(&self, var: u32) -> Option<bool> {
-        self.1.get(&var).cloned()
+        self.1.get(&(var as usize)).cloned()
     }
 
     pub fn complete(self) -> Assignment {
@@ -201,13 +207,13 @@ impl PartialAssignment {
 
         for (var, value) in self.1 {
             if value {
-                assn.insert(var);
+                assn.insert(var as u32);
             }
         }
 
         Assignment(self.0, assn)
     }
-
+/*
     pub fn unconstrained(&self) -> HashSet<u32> {
         let mut r = HashSet::new();
 
@@ -221,6 +227,7 @@ impl PartialAssignment {
 
         r
     }
+*/
 }
 
 #[derive(Debug, Clone)]
@@ -307,7 +314,12 @@ fn main() {
         }
     }
 
-    for solver in &[&dpll::DpllSolver as &Solver, &naive::NaiveSolver as &Solver] {
+    let solvers: &[&Solver] = &[
+        &backtrack_removal::BacktrackRemovalSolver,
+        &naive::NaiveSolver
+    ];
+
+    for solver in solvers {
         println!("");
 
         let pre = time::precise_time_ns();
