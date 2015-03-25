@@ -1,7 +1,4 @@
-use {Solver, Problem, SolverResult, PartialAssignment, Assignment, Clause, Unitness};
-use std::collections::{HashMap, HashSet};
-use std::collections::hash_map::Entry;
-use std::iter::IntoIterator;
+use {Solver, Problem, SolverResult, PartialAssignment, Clause};
 
 pub struct BacktrackSolver;
 
@@ -20,11 +17,11 @@ impl<'a> State<'a> {
     }
 }
 
-fn solve<'problem>(problem: &'problem Problem, mut initial: State<'problem>) -> SolverResult {
+fn solve<'problem>(initial: State<'problem>) -> SolverResult {
     let mut state_stack = vec![initial];
 
     while !state_stack.is_empty() {
-        let mut state = state_stack.pop().unwrap();
+        let state = state_stack.pop().unwrap();
 
         if state.clauses.is_empty() {
             return SolverResult::Satisfiable(state.assignment.complete());
@@ -39,7 +36,7 @@ fn solve<'problem>(problem: &'problem Problem, mut initial: State<'problem>) -> 
         }
         if unsat { continue }
 
-        let next_var = problem.variables.into_iter().find(|&var| !state.assignment.is_assigned(var));
+        let next_var = state.clauses[0].first_unassigned_variable(&state.assignment);
         if let Some(next_var) = next_var {
             let mut left_state = state.clone();
             let mut right_state = state;
@@ -69,7 +66,7 @@ impl Solver for BacktrackSolver {
             assignment: PartialAssignment::new(problem.variables.count())
         };
 
-        solve(problem, root_state)
+        solve(root_state)
     }
     fn name(&self) -> &str {
         "backtrack"

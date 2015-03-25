@@ -1,9 +1,7 @@
 use std::{io, fs, fmt, error};
 use std::path::AsPath;
 use std::io::prelude::*;
-use std::collections::HashSet;
 use std::num::SignedInt;
-use std::iter::range_inclusive;
 use Problem;
 use Clause;
 use VariableSet;
@@ -39,7 +37,7 @@ impl error::FromError<dimacs_peg::ParseError> for Error {
     }
 }
 
-pub fn load_problem<P: AsPath + ?Sized>(path: &P) -> Result<Problem, Error> {
+pub fn load_problem<P: AsPath>(path: P) -> Result<Problem, Error> {
     let mut data = String::new();
     let mut fp = try!(fs::File::open(path));
 

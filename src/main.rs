@@ -1,17 +1,15 @@
-#![feature(plugin, core, collections, std_misc)]
+#![feature(plugin, core, collections, std_misc, str_char)]
 #![plugin(peg_syntax_ext)]
 
 extern crate time;
 
-use std::collections::{HashSet, HashMap, VecMap};
+use std::collections::{HashSet, VecMap};
 use std::fmt;
-use std::num::SignedInt;
 
 mod dimacs;
 mod naive;
 mod dpll;
 mod backtrack;
-mod backtrack_removal;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 /// Disjunctive clause.
@@ -26,33 +24,12 @@ pub enum Unitness {
 }
 
 impl Clause {
-    fn new(trues: &[u32], falses: &[u32]) -> Clause {
-        unimplemented!();
-        /*
-        let mut t = HashSet::new();
-        for &var in trues {
-            t.insert(var);
-        }
-
-        let mut f = HashSet::new();
-        for &var in falses {
-            f.insert(var);
-        }
-
-        Clause { t: t, f: f }
-        */
-    }
-
     fn empty() -> Clause {
         Clause { literals: VecMap::new() }
     }
 
     fn add_literal(&mut self, var: u32, value: bool) {
         self.literals.insert(var as usize, value);
-    }
-
-    fn remove_literal(&mut self, var: u32) {
-        self.literals.remove(&(var as usize)).unwrap();
     }
 
     fn literal(&self, var: u32) -> Option<bool> {
@@ -109,8 +86,14 @@ impl Clause {
         }
     }
 
-    fn unit_evaluate(&self, var: u32, is_true: bool) -> bool {
-        self.literals.get(&(var as usize)).cloned() == Some(is_true)
+    fn first_unassigned_variable(&self, assignment: &PartialAssignment) -> Option<u32> {
+        for (var, _) in &self.literals {
+            if !assignment.is_assigned(var as u32) {
+                return Some(var as u32);
+            }
+        }
+
+        None
     }
 }
 
@@ -315,8 +298,7 @@ fn main() {
     }
 
     let solvers: &[&Solver] = &[
-        &backtrack_removal::BacktrackRemovalSolver,
-        &naive::NaiveSolver
+        &backtrack::BacktrackSolver
     ];
 
     for solver in solvers {
@@ -354,11 +336,10 @@ fn main() {
                         println!("Verdict: satisfiable\nAssignment: {}", assn);
                         println!("Sanity: {}",
                                  if problem.evaluate(&assn) { "OK" } else { "Failed" });
-
-                        let secs = elapsed.num_milliseconds() as f32 / 1000.0;
-                        println!("Computation took {:.3} seconds", secs);
                     }
                 }
+                let secs = elapsed.num_milliseconds() as f32 / 1000.0;
+                println!("Computation took {:.3} seconds", secs);
             }
         }
     }

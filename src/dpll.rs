@@ -1,6 +1,4 @@
-use {Solver, Problem, SolverResult, PartialAssignment, Assignment, Clause, Unitness};
-use std::collections::{HashMap, HashSet};
-use std::collections::hash_map::Entry;
+use {Solver, Problem, SolverResult, PartialAssignment, Clause, Unitness};
 use std::iter::IntoIterator;
 
 pub struct DpllSolver;
@@ -13,7 +11,7 @@ struct State<'problem> {
 
 impl<'problem> State<'problem> {
     fn purity(&self, var: u32) -> Option<bool> {
-        let mut vs = self.clauses.iter().filter_map(|c| c.literal(var));
+        let vs = self.clauses.iter().filter_map(|c| c.literal(var));
         let mut so_far = None;
         for value in vs {
             match (so_far, value) {
@@ -28,7 +26,7 @@ impl<'problem> State<'problem> {
 
 /// Find clauses with only one literal, add the literals to the assignment and delete the clauses
 /// from the active clauses list.
-fn propagate_unit_clauses(problem: &Problem, state: &mut State)
+fn propagate_unit_clauses(state: &mut State)
     -> Option<SolverResult>
 {
     let mut unsat = false;
@@ -48,21 +46,7 @@ fn propagate_unit_clauses(problem: &Problem, state: &mut State)
                     assignment.assign(var, value);
                     changed = true;
                     true
-                },/*
-                    match assignment.assignment(var) {
-                        Some(assn) if assn != value => {
-                            println!(" conflict on var {}", var);
-                            result = Some(SolverResult::Unsatisfiable);
-                        },
-                        None => {
-                            println!(" propagating var {} = {}", var, value);
-                            assignment.assign(var, value);
-                        },
-                        _ => ()
-                    }
-
-                    false
-                },*/
+                },
                 Unitness::Determined(truth) => {
                     println!("determined {}", truth);
                     if !truth {
@@ -85,73 +69,7 @@ fn propagate_unit_clauses(problem: &Problem, state: &mut State)
         return None
     }
 }
-/*
-fn fixup_assignment(problem: &mut Problem, var: u32, value: bool) -> Option<SolverResult> {
-    problem.clauses.retain(|clause| !clause.unit_evaluate(var, value));
-    for clause in &mut problem.clauses {
-        clause.t.remove(&var);
-        clause.f.remove(&var);
 
-        if clause.t.len() + clause.f.len() == 0 {
-            return Some(SolverResult::Unsatisfiable);
-        }
-    }
-
-    None
-}
-
-#[test]
-fn test_propagate_unit_clauses() {
-    let mut p = Problem {
-        variables: 1,
-        clauses: vec![
-            Clause::new(&[1], &[])
-        ]
-    };
-
-    let mut a = PartialAssignment::new(p.variables);
-
-    propagate_unit_clauses(&mut p, &mut a);
-
-    assert!(p.clauses.is_empty());
-    assert!(a.assignment(1) == Some(true));
-}
-*/
-/*
-fn get_purity(var: u32, problem: &Problem) -> Option<bool> {
-    let mut seen = None;
-
-    for clause in &problem.clauses {
-        let here =
-            if clause.t.contains(&var) { Some(true) }
-            else if clause.f.contains(&var) { Some(false) }
-            else { None };
-
-        match (seen, here) {
-            (None, x) => seen = x,
-            (Some(p), Some(n)) if p != n => return None,
-            _ => ()
-        }
-    }
-
-    seen
-}
-
-#[test]
-fn test_get_purity() {
-    let mut p = Problem {
-        variables: 3,
-        clauses: vec![
-            Clause::new(&[1, 2], &[3]),
-            Clause::new(&[1], &[2, 3])
-        ]
-    };
-
-    assert_eq!(get_purity(1, &p), Some(true));
-    assert_eq!(get_purity(2, &p), None);
-    assert_eq!(get_purity(3, &p), Some(false));
-}
-*/
 fn eliminate_pure(problem: &Problem, state: &mut State) -> Option<SolverResult> {
     for var in &problem.variables {
         match (state.purity(var), state.assignment.assignment(var)) {
@@ -186,13 +104,13 @@ fn solve<'problem>(problem: &'problem Problem, mut state: State<'problem>) -> So
         return SolverResult::Satisfiable(state.assignment.complete());
     }
 
-    if let Some(result) = propagate_unit_clauses(problem, &mut state) {
+    if let Some(result) = propagate_unit_clauses(&mut state) {
         return result;
     }
 
-    //if let Some(result) = eliminate_pure(problem, &mut state) {
-    //    return result;
-    //}
+    if let Some(result) = eliminate_pure(problem, &mut state) {
+        return result;
+    }
 
     if state.clauses.is_empty() {
         return SolverResult::Satisfiable(state.assignment.complete());
@@ -202,9 +120,6 @@ fn solve<'problem>(problem: &'problem Problem, mut state: State<'problem>) -> So
     if let Some(next_var) = next_var {
         let mut left_state = state.clone();
         let mut right_state = state.clone();
-
-        //let mut a = String::new();
-        //::std::io::stdin().read_line(&mut a);
 
         left_state.assignment.assign(next_var, false);
         right_state.assignment.assign(next_var, true);
