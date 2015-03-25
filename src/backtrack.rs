@@ -20,9 +20,7 @@ impl<'a> State<'a> {
 fn solve<'problem>(initial: State<'problem>) -> SolverResult {
     let mut state_stack = vec![initial];
 
-    while !state_stack.is_empty() {
-        let state = state_stack.pop().unwrap();
-
+    while let Some(state) = state_stack.pop() {
         if state.clauses.is_empty() {
             return SolverResult::Satisfiable(state.assignment.complete());
         }

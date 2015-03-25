@@ -37,18 +37,14 @@ fn propagate_unit_clauses(state: &mut State)
         let mut changed = false;
 
         clauses.retain(|clause| {
-            print!("{:?} {:?} ", assignment, clause);
             match clause.unit_literal(&assignment) {
-                Unitness::Nonunit => { println!("nonunit"); true },
+                Unitness::Nonunit => true,
                 Unitness::Unit(var, value) => {
-                    println!("up: {} <- {}", var, value);
-                    println!("c {:?} a {:?}", clause, assignment);
                     assignment.assign(var, value);
                     changed = true;
                     true
                 },
                 Unitness::Determined(truth) => {
-                    println!("determined {}", truth);
                     if !truth {
                         unsat = true;
                     }
@@ -61,7 +57,7 @@ fn propagate_unit_clauses(state: &mut State)
         if unsat || !changed { break }
     }
 
-    println!("{} clauses left after propagation", clauses.len());
+//    println!("{} clauses left after propagation", clauses.len());
 
     if unsat {
         return Some(SolverResult::Unsatisfiable)
@@ -70,7 +66,7 @@ fn propagate_unit_clauses(state: &mut State)
     }
 }
 
-fn eliminate_pure(problem: &Problem, state: &mut State) -> Option<SolverResult> {
+fn eliminate_pure(problem: &Problem, state: &mut State) {
     for var in &problem.variables {
         match (state.purity(var), state.assignment.assignment(var)) {
             (Some(value), Some(assn)) if value == assn => {
@@ -95,59 +91,53 @@ fn eliminate_pure(problem: &Problem, state: &mut State) -> Option<SolverResult> 
             _ => unreachable!()
         }
     }
-
-    None
 }
 
-fn solve<'problem>(problem: &'problem Problem, mut state: State<'problem>) -> SolverResult {
-    if state.clauses.is_empty() {
-        return SolverResult::Satisfiable(state.assignment.complete());
-    }
+fn solve<'problem>(problem: &'problem Problem, initial: State<'problem>) -> SolverResult {
+    let mut state_stack = vec![initial];
 
-    if let Some(result) = propagate_unit_clauses(&mut state) {
-        return result;
-    }
+    while let Some(state) = state_stack.pop() {
+        let mut state = state;
 
-    if let Some(result) = eliminate_pure(problem, &mut state) {
-        return result;
-    }
-
-    if state.clauses.is_empty() {
-        return SolverResult::Satisfiable(state.assignment.complete());
-    }
-
-    let next_var = problem.variables.into_iter().find(|&var| !state.assignment.is_assigned(var));
-    if let Some(next_var) = next_var {
-        let mut left_state = state.clone();
-        let mut right_state = state.clone();
-
-        left_state.assignment.assign(next_var, false);
-        right_state.assignment.assign(next_var, true);
-
-        let left_result = solve(problem, left_state);
-        if let SolverResult::Satisfiable(_) = left_result {
-            return left_result;
+        if state.clauses.is_empty() {
+            return SolverResult::Satisfiable(state.assignment.complete());
         }
 
-        let right_result = solve(problem, right_state);
-        if let SolverResult::Satisfiable(_) = right_result {
-            return right_result;
+        if let Some(_) = propagate_unit_clauses(&mut state) {
+            continue;
         }
 
-        return SolverResult::Unsatisfiable;
-    } else {
-        println!("UNREACHABLE");
-        println!("assn = {:?}", state.assignment);
-        println!("clauses = {:?}", state.clauses);
-        unreachable!();
+        eliminate_pure(problem, &mut state);
+
+        if state.clauses.is_empty() {
+            return SolverResult::Satisfiable(state.assignment.complete());
+        }
+
+        let next_var = state.clauses[0].first_unassigned_variable(&state.assignment);
+        if let Some(next_var) = next_var {
+            let mut left_state = state.clone();
+            let mut right_state = state;
+
+            left_state.assignment.assign(next_var, false);
+            right_state.assignment.assign(next_var, true);
+
+            state_stack.push(left_state);
+            state_stack.push(right_state);
+        } else {
+            println!("UNREACHABLE");
+            println!("assn = {:?}", state.assignment);
+            println!("clauses = {:?}", state.clauses);
+            unreachable!();
+        }
     }
+
+    SolverResult::Unsatisfiable
 }
 
 impl Solver for DpllSolver {
     fn solve(&self, problem: &Problem) -> SolverResult {
         let all_clauses = problem.clauses.iter().collect::<Vec<_>>();
 
-        println!("Clauses:\n{:?}", all_clauses);
         let root_state = State {
             clauses: all_clauses,
             assignment: PartialAssignment::new(problem.variables.count())

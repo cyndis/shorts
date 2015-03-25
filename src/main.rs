@@ -298,7 +298,8 @@ fn main() {
     }
 
     let solvers: &[&Solver] = &[
-        &backtrack::BacktrackSolver
+        &dpll::DpllSolver,
+        &backtrack::BacktrackSolver,
     ];
 
     for solver in solvers {
