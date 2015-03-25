@@ -1,5 +1,4 @@
 use {Solver, Problem, SolverResult, PartialAssignment, Clause, Unitness};
-use std::iter::IntoIterator;
 
 pub struct DpllSolver;
 
@@ -98,10 +97,6 @@ fn solve<'problem>(problem: &'problem Problem, initial: State<'problem>) -> Solv
 
     while let Some(state) = state_stack.pop() {
         let mut state = state;
-
-        if state.clauses.is_empty() {
-            return SolverResult::Satisfiable(state.assignment.complete());
-        }
 
         if let Some(_) = propagate_unit_clauses(&mut state) {
             continue;

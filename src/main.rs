@@ -247,7 +247,7 @@ pub enum SolverResult {
     Unsatisfiable
 }
 
-pub trait Solver {
+pub trait Solver: Sync {
     fn solve(&self, problem: &Problem) -> SolverResult;
     fn name(&self) -> &str;
 }
@@ -257,15 +257,48 @@ enum OutputFormat {
     Dimacs
 }
 
+const SOLVERS: &'static [&'static Solver] = &[
+    &dpll::DpllSolver,
+    &backtrack::BacktrackSolver,
+    &naive::NaiveSolver
+];
+static DEFAULT_SOLVER: &'static Solver = SOLVERS[0];
+
+fn print_usage() {
+    println!("Usage: shorts [-d] <problem.dimacs>");
+    println!("Options:");
+    println!("  -d            Print result in DIMACS format");
+    println!("  -s strategy   Solving strategy to use (default = {})", DEFAULT_SOLVER.name());
+    println!("\nAvailable strategies:");
+    for solver in SOLVERS {
+        println!("  {}", solver.name());
+    }
+}
+
 fn main() {
-    let args = std::env::args();
+    let mut args = std::env::args().skip(1);
 
     let mut output_format = OutputFormat::Shorts;
     let mut path = None;
+    let mut solver: &'static Solver = SOLVERS[0];
 
-    for arg in args {
-        if arg == "--dimacs" {
+    while let Some(arg) = args.next() {
+        if arg == "-d" {
             output_format = OutputFormat::Dimacs;
+        } else if arg == "-s" {
+            let name = match args.next() {
+                Some(n) => n,
+                None    => { println!("Error: parameter required for '-s'"); print_usage(); return }
+            };
+            solver = match SOLVERS.iter().find(|s| s.name() == name) {
+                Some(&s) => s,
+                None    => {
+                    println!("Error: unknown strategy '{}'", name); print_usage(); return;
+                }
+            };
+        } else if arg.starts_with("-") {
+            print_usage();
+            return;
         } else {
             path = Some(arg);
         }
@@ -274,9 +307,7 @@ fn main() {
     let path = match path {
         Some(path) => path,
         None => {
-            println!("Usage: shorts [--dimacs] <problem.dimacs>");
-            println!("Options:");
-            println!("  -dimacs    Print result in DIMACS format");
+            print_usage();
             return;
         }
     };
@@ -297,51 +328,44 @@ fn main() {
         }
     }
 
-    let solvers: &[&Solver] = &[
-        &dpll::DpllSolver,
-        &backtrack::BacktrackSolver,
-    ];
+    println!("");
 
-    for solver in solvers {
-        println!("");
+    let pre = time::precise_time_ns();
+    let result = solver.solve(&problem);
+    let post = time::precise_time_ns();
+    let elapsed = std::time::Duration::nanoseconds(post as i64 - pre as i64);
 
-        let pre = time::precise_time_ns();
-        let result = solver.solve(&problem);
-        let post = time::precise_time_ns();
-        let elapsed = std::time::Duration::nanoseconds(post as i64 - pre as i64);
+    match output_format {
+        OutputFormat::Dimacs => {
+            println!("c strategy: {}", solver.name());
 
-        match output_format {
-            OutputFormat::Dimacs => {
-                println!("c strategy: {}", solver.name());
-
-                match result {
-                    SolverResult::Unsatisfiable => println!("s cnf 0"),
-                    SolverResult::Satisfiable(assn) => {
-                        print!("s cnf 1 {} {}\nv", problem.variables.count(), problem.clauses.len());
-                        for var in &problem.variables {
-                            if assn.is_set(var) {
-                                print!(" {}", var);
-                            } else {
-                                print!(" -{}", var);
-                            }
+            match result {
+                SolverResult::Unsatisfiable => println!("s cnf 0"),
+                SolverResult::Satisfiable(assn) => {
+                    print!("s cnf 1 {} {}\nv", problem.variables.count(), problem.clauses.len());
+                    for var in &problem.variables {
+                        if assn.is_set(var) {
+                            print!(" {}", var);
+                        } else {
+                            print!(" -{}", var);
                         }
-                        print!("\n");
                     }
+                    print!("\n");
                 }
-            },
-            OutputFormat::Shorts => {
-                println!("Strategy: {}", solver.name());
-                match result {
-                    SolverResult::Unsatisfiable => println!("Verdict: unsatisfiable"),
-                    SolverResult::Satisfiable(assn) => {
-                        println!("Verdict: satisfiable\nAssignment: {}", assn);
-                        println!("Sanity: {}",
-                                 if problem.evaluate(&assn) { "OK" } else { "Failed" });
-                    }
-                }
-                let secs = elapsed.num_milliseconds() as f32 / 1000.0;
-                println!("Computation took {:.3} seconds", secs);
             }
+        },
+        OutputFormat::Shorts => {
+            println!("Strategy: {}", solver.name());
+            match result {
+                SolverResult::Unsatisfiable => println!("Verdict: unsatisfiable"),
+                SolverResult::Satisfiable(assn) => {
+                    println!("Verdict: satisfiable\nAssignment: {}", assn);
+                    println!("Sanity: {}",
+                                if problem.evaluate(&assn) { "OK" } else { "Failed" });
+                }
+            }
+            let secs = elapsed.num_milliseconds() as f32 / 1000.0;
+            println!("Computation took {:.3} seconds", secs);
         }
     }
 }
