@@ -274,9 +274,11 @@ pub trait Solver: Sync {
     fn name(&self) -> &str;
 }
 
+#[derive(PartialEq, Eq)]
 enum OutputFormat {
     Shorts,
-    Dimacs
+    Dimacs,
+    Course
 }
 
 const SOLVERS: &'static [&'static Solver] = &[
@@ -290,6 +292,7 @@ fn print_usage() {
     println!("Usage: shorts [-d] <problem.dimacs>");
     println!("Options:");
     println!("  -d            Print result in DIMACS format");
+    println!("  -c            Print result in course test suite format");
     println!("  -s strategy   Solving strategy to use (default = {})", DEFAULT_SOLVER.name());
     println!("\nAvailable strategies:");
     for solver in SOLVERS {
@@ -307,6 +310,8 @@ fn main() {
     while let Some(arg) = args.next() {
         if arg == "-d" {
             output_format = OutputFormat::Dimacs;
+        } else if arg == "-c" {
+            output_format = OutputFormat::Course;
         } else if arg == "-s" {
             let name = match args.next() {
                 Some(n) => n,
@@ -336,7 +341,8 @@ fn main() {
 
     let problem = match dimacs::load_problem(&path) {
         Ok(p) => p,
-        Err(e) => { println!("{}", e); return }
+        Err(ref e) if output_format != OutputFormat::Course => { println!("{}", e); return }
+        Err(e) => { println!("error {}", e); return }
     };
 
     match output_format {
@@ -347,10 +353,10 @@ fn main() {
             println!("shorts - A CNF boolean satisfiability solver\n");
             println!("Problem:");
             println!("  {}", problem);
-        }
+            println!("");
+        },
+        OutputFormat::Course => ()
     }
-
-    println!("");
 
     let pre = time::precise_time_ns();
     let result = solver.solve(&problem);
@@ -388,6 +394,22 @@ fn main() {
             }
             let secs = elapsed.num_milliseconds() as f32 / 1000.0;
             println!("Computation took {:.3} seconds", secs);
+        },
+        OutputFormat::Course => {
+            match result {
+                SolverResult::Unsatisfiable => println!("unsat"),
+                SolverResult::Satisfiable(assn) => {
+                    print!("sat");
+                    for var in &problem.variables {
+                        if assn.is_set(var) {
+                            print!(" {}", var);
+                        } else {
+                            print!(" -{}", var);
+                        }
+                    }
+                    print!("\n");
+                }
+            }
         }
     }
 }
