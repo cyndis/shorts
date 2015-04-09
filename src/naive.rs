@@ -1,7 +1,9 @@
-use {Solver, Problem, SolverResult, Assignment, PartialAssignment};
+use {Solver, Problem, SolverResult, TotalAssignment, PartialAssignment};
 
-fn each_combination<F: FnMut(Assignment) -> bool>(n: u32, mut f: F) {
-    fn inner<F: FnMut(Assignment) -> bool>(i: u32, n: u32, h: PartialAssignment, f: &mut F) -> bool {
+fn each_combination<F: FnMut(TotalAssignment) -> bool>(n: u32, mut f: F) {
+    fn inner<F: FnMut(TotalAssignment) -> bool>(i: u32, n: u32, h: PartialAssignment, f: &mut F)
+        -> bool
+    {
         if i == n {
             return f(h.complete())
         }

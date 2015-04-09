@@ -1,4 +1,4 @@
-use {Solver, Problem, SolverResult, PartialAssignment, Clause, Unitness};
+use {Solver, Problem, SolverResult, PartialAssignment, Clause, Unitness, Assignment};
 
 pub struct DpllSolver;
 
@@ -36,7 +36,7 @@ fn propagate_unit_clauses(state: &mut State)
         let mut changed = false;
 
         clauses.retain(|clause| {
-            match clause.unit_literal(&assignment) {
+            match clause.unit_literal(assignment) {
                 Unitness::Nonunit => true,
                 Unitness::Unit(var, value) => {
                     assignment.assign(var, value);
@@ -55,8 +55,6 @@ fn propagate_unit_clauses(state: &mut State)
 
         if unsat || !changed { break }
     }
-
-//    println!("{} clauses left after propagation", clauses.len());
 
     if unsat {
         return Some(SolverResult::Unsatisfiable)

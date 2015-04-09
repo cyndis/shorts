@@ -23,6 +23,14 @@ pub enum Unitness {
     Determined(bool)
 }
 
+trait Assignment {
+    fn assignment(&self, var: u32) -> Option<bool>;
+
+    fn is_assigned(&self, var: u32) -> bool {
+        self.assignment(var).is_some()
+    }
+}
+
 impl Clause {
     fn empty() -> Clause {
         Clause { literals: VecMap::new() }
@@ -36,7 +44,7 @@ impl Clause {
         self.literals.get(&(var as usize)).cloned()
     }
 
-    fn unit_literal(&self, assignment: &PartialAssignment) -> Unitness {
+    fn unit_literal<A: Assignment>(&self, assignment: &A) -> Unitness {
         let mut ret = None;
 
         if let Some(x) = self.evaluate_partial(assignment) {
@@ -58,7 +66,7 @@ impl Clause {
         }
     }
 
-    fn evaluate(&self, assignment: &Assignment) -> bool {
+    fn evaluate(&self, assignment: &TotalAssignment) -> bool {
         for (var, &value) in &self.literals {
             if assignment.is_set(var as u32) == value {
                 return true
@@ -68,7 +76,7 @@ impl Clause {
         false
     }
 
-    fn evaluate_partial(&self, assignment: &PartialAssignment) -> Option<bool> {
+    fn evaluate_partial<A: Assignment>(&self, assignment: &A) -> Option<bool> {
         let mut indeterminate = false;
 
         for (var, &value) in &self.literals {
@@ -86,7 +94,7 @@ impl Clause {
         }
     }
 
-    fn first_unassigned_variable(&self, assignment: &PartialAssignment) -> Option<u32> {
+    fn first_unassigned_variable<A: Assignment>(&self, assignment: &A) -> Option<u32> {
         for (var, _) in &self.literals {
             if !assignment.is_assigned(var as u32) {
                 return Some(var as u32);
@@ -142,7 +150,7 @@ pub struct Problem {
 }
 
 impl Problem {
-    fn evaluate(&self, assignment: &Assignment) -> bool {
+    fn evaluate(&self, assignment: &TotalAssignment) -> bool {
         self.clauses.iter().all(|c| c.evaluate(assignment))
     }
 }
@@ -175,17 +183,7 @@ impl PartialAssignment {
         self.1.insert(var as usize, value);
     }
 
-    pub fn is_assigned(&self, var: u32) -> bool {
-        assert!(var > 0 && var <= self.0);
-
-        self.1.contains_key(&(var as usize))
-    }
-
-    pub fn assignment(&self, var: u32) -> Option<bool> {
-        self.1.get(&(var as usize)).cloned()
-    }
-
-    pub fn complete(self) -> Assignment {
+    pub fn complete(self) -> TotalAssignment {
         let mut assn = HashSet::new();
 
         for (var, value) in self.1 {
@@ -194,7 +192,7 @@ impl PartialAssignment {
             }
         }
 
-        Assignment(self.0, assn)
+        TotalAssignment(self.0, assn)
     }
 /*
     pub fn unconstrained(&self) -> HashSet<u32> {
@@ -213,10 +211,22 @@ impl PartialAssignment {
 */
 }
 
-#[derive(Debug, Clone)]
-pub struct Assignment(u32, HashSet<u32>);
+impl Assignment for PartialAssignment {
+    fn is_assigned(&self, var: u32) -> bool {
+        assert!(var > 0 && var <= self.0);
 
-impl Assignment {
+        self.1.contains_key(&(var as usize))
+    }
+
+    fn assignment(&self, var: u32) -> Option<bool> {
+        self.1.get(&(var as usize)).cloned()
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct TotalAssignment(u32, HashSet<u32>);
+
+impl TotalAssignment {
     pub fn is_set(&self, var: u32) -> bool {
         assert!(var > 0 && var <= self.0);
 
@@ -224,7 +234,19 @@ impl Assignment {
     }
 }
 
-impl fmt::Display for Assignment {
+impl Assignment for TotalAssignment {
+    fn is_assigned(&self, var: u32) -> bool {
+        assert!(var > 0 && var <= self.0);
+
+        true
+    }
+
+    fn assignment(&self, var: u32) -> Option<bool> {
+        Some(self.1.contains(&var))
+    }
+}
+
+impl fmt::Display for TotalAssignment {
     fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
         for i in 0..self.0 {
             let var = i+1;
@@ -243,7 +265,7 @@ impl fmt::Display for Assignment {
 
 #[derive(Debug)]
 pub enum SolverResult {
-    Satisfiable(Assignment),
+    Satisfiable(TotalAssignment),
     Unsatisfiable
 }
 
