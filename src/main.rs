@@ -289,7 +289,7 @@ const SOLVERS: &'static [&'static Solver] = &[
 static DEFAULT_SOLVER: &'static Solver = SOLVERS[0];
 
 fn print_usage() {
-    println!("Usage: shorts [-d] <problem.dimacs>");
+    println!("Usage: shorts [options] <problem.dimacs>");
     println!("Options:");
     println!("  -d            Print result in DIMACS format");
     println!("  -c            Print result in course test suite format");
