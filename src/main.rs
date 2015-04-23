@@ -292,7 +292,7 @@ fn print_usage() {
     println!("Usage: shorts [options] <problem.dimacs>");
     println!("Options:");
     println!("  -d            Print result in DIMACS format");
-    println!("  -c            Print result in course test suite format");
+    println!("  -c            Print result in human readable format");
     println!("  -s strategy   Solving strategy to use (default = {})", DEFAULT_SOLVER.name());
     println!("\nAvailable strategies:");
     for solver in SOLVERS {
@@ -303,7 +303,7 @@ fn print_usage() {
 fn main() {
     let mut args = std::env::args().skip(1);
 
-    let mut output_format = OutputFormat::Shorts;
+    let mut output_format = OutputFormat::Course;
     let mut path = None;
     let mut solver: &'static Solver = SOLVERS[0];
 
@@ -311,7 +311,7 @@ fn main() {
         if arg == "-d" {
             output_format = OutputFormat::Dimacs;
         } else if arg == "-c" {
-            output_format = OutputFormat::Course;
+            output_format = OutputFormat::Shorts;
         } else if arg == "-s" {
             let name = match args.next() {
                 Some(n) => n,
